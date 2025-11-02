@@ -320,5 +320,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 This project was developed as part of the ALX Software Engineering program.
 
 📞 Support
-For support, email [your-email] or create an issue in the repository.
+For support, email: awinimaxwell428@gmail.com or create an issue in the repository.
 
