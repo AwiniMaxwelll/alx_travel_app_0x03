@@ -123,6 +123,31 @@ WSGI_APPLICATION = 'alx_travel_app.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
+<<<<<<< HEAD
+        'NAME': env('DB_NAME'),
+        'USER': env('DB_USER'),
+        'PASSWORD': env('DB_PASSWORD'),
+        'HOST': env('DB_HOST', default='localhost'),
+        # 'PORT': env('DB_PORT', default='3307'),
+    }
+}
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'alx_travel',
+#         'USER': 'root',
+#         'PASSWORD': 'max0546843973',
+#         'HOST': 'localhost',
+#         'PORT': '3306',  # Your custom port
+#         'OPTIONS': {
+#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#             'charset': 'utf8mb4',
+#         },
+#     }
+# }
+
+=======
         'NAME': 'alx_travel',
         'USER': 'root',
         'PASSWORD': 'max0546843973',
@@ -135,6 +160,7 @@ DATABASES = {
     }
 }
 
+>>>>>>> 9f08b02f5f949862c3244362ba1bc3d4acd6d73f
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 

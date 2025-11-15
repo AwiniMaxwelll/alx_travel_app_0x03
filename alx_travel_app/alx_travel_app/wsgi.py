@@ -23,3 +23,11 @@ from django.core.wsgi import get_wsgi_application
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'alx_travel_app.settings')
 
 application = get_wsgi_application()
+<<<<<<< HEAD
+=======
+
+<<<<<<< HEAD
+=======
+
+>>>>>>> 9f08b02f5f949862c3244362ba1bc3d4acd6d73f
+>>>>>>> ca3d67539908da8ee3605b14873e7ff39e914eab
