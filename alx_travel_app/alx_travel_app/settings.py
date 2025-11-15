@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import environ
 
@@ -18,7 +19,10 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+     'lordlinker.pythonanywhere.com',
+    'www.lordlinker.pythonanywhere.com',
+]
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -164,7 +168,7 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
-
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATIC_URL = 'static/'
 
 # Default primary key field type
