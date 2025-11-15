@@ -24,3 +24,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'alx_travel_app.settings')
 
 application = get_wsgi_application()
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 9f08b02f5f949862c3244362ba1bc3d4acd6d73f

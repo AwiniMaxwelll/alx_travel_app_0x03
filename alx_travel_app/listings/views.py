@@ -4,9 +4,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
-from django.conf import settings  # Added import
 from .models import Listing, Booking, Payment
-from .serializers import ListingSerializer, BookingSerializer, PaymentSerializer  # Added PaymentSerializer
+from .serializers import ListingSerializer, BookingSerializer, PaymentSerializer
 from .tasks import send_booking_confirmation_email
 
 
@@ -19,10 +18,11 @@ class ListingViewSet(viewsets.ModelViewSet):
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [IsAuthenticated]  
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def perform_create(self, serializer):
-        booking = serializer.save(guest=self.request.user)  
+        booking = serializer.save(user=self.request.user)
+        # Trigger async email task
         send_booking_confirmation_email.delay(booking.booking_id)
 
 
@@ -41,11 +41,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
         except Booking.DoesNotExist:
             return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Check if payment already exists
-        if Payment.objects.filter(booking=booking).exists():
-            return Response({'error': 'Payment already initiated for this booking'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-
         # Create payment record
         payment = Payment.objects.create(
             booking=booking,
@@ -56,7 +51,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         # Prepare Chapa payment request
         chapa_url = "https://api.chapa.co/v1/transaction/initialize"
         headers = {
-            "Authorization": f"Bearer {getattr(settings, 'CHAPA_SECRET_KEY', '')}",  
+            "Authorization": f"Bearer {os.getenv('CHAPA_SECRET_KEY')}",
             "Content-Type": "application/json"
         }
 
@@ -64,8 +59,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             "amount": str(booking.total_price),
             "currency": "ETB",
             "email": request.user.email,
-            "first_name": request.user.first_name or "Customer",
-            "last_name": request.user.last_name or "User",
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
             "tx_ref": payment.reference,
             "callback_url": request.build_absolute_uri('/api/payments/verify/'),
             "return_url": request.data.get('return_url', 'http://localhost:3000/payment/success'),
@@ -80,7 +75,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             response_data = response.json()
 
             if response.status_code == 200 and response_data.get('status') == 'success':
-                payment.transaction_id = response_data['data'].get('tx_ref')
+                payment.transaction_id = response_data['data']['tx_ref']
                 payment.save()
 
                 return Response({
@@ -114,9 +109,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # Verify with Chapa
-        chapa_url = f"https://api.chapa.co/v1/transaction/verify/{payment.reference}"  # Fixed: use payment.reference
+        chapa_url = f"https://api.chapa.co/v1/transaction/verify/{tx_ref}"
         headers = {
-            "Authorization": f"Bearer {getattr(settings, 'CHAPA_SECRET_KEY', '')}"  # Fixed: use settings
+            "Authorization": f"Bearer {os.getenv('CHAPA_SECRET_KEY')}"
         }
 
         try:
