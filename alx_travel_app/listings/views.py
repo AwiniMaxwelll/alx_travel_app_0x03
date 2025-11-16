@@ -1,143 +1,256 @@
-import os
-import requests
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
-from .models import Listing, Booking, Payment
-from .serializers import ListingSerializer, BookingSerializer, PaymentSerializer
-from .tasks import send_booking_confirmation_email
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from django.utils import timezone
+from .models import Listing, Booking, Review, Payment
+from .serializers import (
+    ListingSerializer, ListingCreateSerializer,
+    BookingSerializer, BookingCreateSerializer, 
+    ReviewSerializer, ReviewCreateSerializer,
+    PaymentSerializer, PaymentCreateSerializer,
+    UserSerializer
+)
+from django.contrib.auth.models import User
+
+
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Get current user profile",
+        responses={200: UserSerializer}
+    )
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
 
 
 class ListingViewSet(viewsets.ModelViewSet):
-    queryset = Listing.objects.all()
-    serializer_class = ListingSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['location', 'price_per_night', 'is_available']
+    search_fields = ['title', 'description', 'location', 'amenities']
+    ordering_fields = ['price_per_night', 'created_at']
+    ordering = ['-created_at']
+    queryset = Listing.objects.all()
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ListingCreateSerializer
+        return ListingSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(host=self.request.user)
+
+    @swagger_auto_schema(
+        operation_description="Create a new listing",
+        request_body=ListingCreateSerializer,
+        responses={
+            201: ListingSerializer,
+            400: "Bad Request"
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Get all listings with filtering and search",
+        manual_parameters=[
+            openapi.Parameter('location', openapi.IN_QUERY, description="Filter by location", type=openapi.TYPE_STRING),
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in title, description, location, amenities", type=openapi.TYPE_STRING),
+        ],
+        responses={200: ListingSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Get listing details",
+        responses={200: ListingSerializer}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
 
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all()
-    serializer_class = BookingSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['status']
+    ordering_fields = ['created_at', 'check_in_date']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        # Handle Swagger schema generation (user is anonymous)
+        if getattr(self, 'swagger_fake_view', False):
+            return Booking.objects.none()
+        
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return Booking.objects.all()
+        return Booking.objects.filter(guest=user)
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return BookingCreateSerializer
+        return BookingSerializer
 
     def perform_create(self, serializer):
-        booking = serializer.save(user=self.request.user)
-        # Trigger async email task
-        send_booking_confirmation_email.delay(booking.booking_id)
+        serializer.save(guest=self.request.user)
+
+    @swagger_auto_schema(
+        operation_description="Create a new booking",
+        request_body=BookingCreateSerializer,
+        responses={
+            201: BookingSerializer,
+            400: "Validation error"
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        operation_description="Cancel a booking",
+        responses={
+            200: BookingSerializer,
+            400: "Cannot cancel completed or already cancelled booking"
+        }
+    )
+    def cancel(self, request, pk=None):
+        booking = self.get_object()
+        if booking.status == Booking.STATUS_COMPLETED:
+            return Response(
+                {"error": "Cannot cancel a completed booking."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if booking.status == Booking.STATUS_CANCELLED:
+            return Response(
+                {"error": "Booking is already cancelled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        booking.status = Booking.STATUS_CANCELLED
+        booking.save()
+        serializer = self.get_serializer(booking)
+        return Response(serializer.data)
+
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['listing', 'rating']
+    ordering_fields = ['created_at', 'rating']
+    ordering = ['-created_at']
+    queryset = Review.objects.all()
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ReviewCreateSerializer
+        return ReviewSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(reviewer=self.request.user)
+
+    @swagger_auto_schema(
+        operation_description="Create a new review",
+        request_body=ReviewCreateSerializer,
+        responses={
+            201: ReviewSerializer,
+            400: "Validation error - user can only review completed bookings"
+        }
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.all()
-    serializer_class = PaymentSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ['status', 'payment_method']
+    ordering_fields = ['created_at', 'amount']
+    ordering = ['-created_at']
 
-    @action(detail=False, methods=['post'], url_path='initiate')
-    def initiate_payment(self, request):
-        """Initiate payment with Chapa"""
-        booking_id = request.data.get('booking_id')
+    def get_queryset(self):
+        # Handle Swagger schema generation (user is anonymous)
+        if getattr(self, 'swagger_fake_view', False):
+            return Payment.objects.none()
+        
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return Payment.objects.all()
+        return Payment.objects.filter(booking__guest=user)
 
-        try:
-            booking = Booking.objects.get(booking_id=booking_id)
-        except Booking.DoesNotExist:
-            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PaymentCreateSerializer
+        return PaymentSerializer
 
-        # Create payment record
-        payment = Payment.objects.create(
-            booking=booking,
-            amount=booking.total_price,
-            reference=f"BK-{booking.booking_id}"
-        )
-
-        # Prepare Chapa payment request
-        chapa_url = "https://api.chapa.co/v1/transaction/initialize"
-        headers = {
-            "Authorization": f"Bearer {os.getenv('CHAPA_SECRET_KEY')}",
-            "Content-Type": "application/json"
+    @swagger_auto_schema(
+        operation_description="Create a new payment",
+        request_body=PaymentCreateSerializer,
+        responses={
+            201: PaymentSerializer,
+            400: "Validation error"
         }
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
-        payload = {
-            "amount": str(booking.total_price),
-            "currency": "ETB",
-            "email": request.user.email,
-            "first_name": request.user.first_name,
-            "last_name": request.user.last_name,
-            "tx_ref": payment.reference,
-            "callback_url": request.build_absolute_uri('/api/payments/verify/'),
-            "return_url": request.data.get('return_url', 'http://localhost:3000/payment/success'),
-            "customization": {
-                "title": f"Payment for {booking.listing.title}",
-                "description": f"Booking from {booking.check_in_date} to {booking.check_out_date}"
-            }
+    @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        operation_description="Simulate payment completion",
+        responses={200: PaymentSerializer}
+    )
+    def complete(self, request, pk=None):
+        payment = self.get_object()
+        # Create a simple transaction ID for demo
+        import uuid
+        payment.mark_as_completed(transaction_id=f"txn_{uuid.uuid4().hex[:16]}")
+        serializer = self.get_serializer(payment)
+        return Response(serializer.data)
+
+
+# Statistics View
+from rest_framework.views import APIView
+from django.db.models import Count, Avg, Sum
+
+class StatsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Get travel app statistics",
+        responses={
+            200: openapi.Response(
+                description="Statistics data",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'total_listings': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_bookings': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_revenue': openapi.Schema(type=openapi.TYPE_NUMBER),
+                        'average_rating': openapi.Schema(type=openapi.TYPE_NUMBER),
+                    }
+                )
+            )
         }
-
-        try:
-            response = requests.post(chapa_url, json=payload, headers=headers)
-            response_data = response.json()
-
-            if response.status_code == 200 and response_data.get('status') == 'success':
-                payment.transaction_id = response_data['data']['tx_ref']
-                payment.save()
-
-                return Response({
-                    'payment_url': response_data['data']['checkout_url'],
-                    'reference': payment.reference,
-                    'status': 'success'
-                }, status=status.HTTP_200_OK)
-            else:
-                payment.status = 'failed'
-                payment.save()
-                return Response({'error': response_data.get('message', 'Payment initiation failed')},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-        except requests.exceptions.RequestException as e:
-            payment.status = 'failed'
-            payment.save()
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=False, methods=['get'], url_path='verify')
-    def verify_payment(self, request):
-        """Verify payment status with Chapa"""
-        tx_ref = request.query_params.get('tx_ref')
-
-        if not tx_ref:
-            return Response({'error': 'Transaction reference is required'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            payment = Payment.objects.get(reference=tx_ref)
-        except Payment.DoesNotExist:
-            return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Verify with Chapa
-        chapa_url = f"https://api.chapa.co/v1/transaction/verify/{tx_ref}"
-        headers = {
-            "Authorization": f"Bearer {os.getenv('CHAPA_SECRET_KEY')}"
+    )
+    def get(self, request):
+        stats = {
+            'total_listings': Listing.objects.count(),
+            'total_bookings': Booking.objects.count(),
+            'total_revenue': Payment.objects.filter(status='completed').aggregate(
+                total=Sum('amount')
+            )['total'] or 0,
+            'average_rating': Review.objects.aggregate(
+                avg_rating=Avg('rating')
+            )['avg_rating'] or 0,
         }
-
-        try:
-            response = requests.get(chapa_url, headers=headers)
-            response_data = response.json()
-
-            if response.status_code == 200 and response_data.get('status') == 'success':
-                chapa_status = response_data['data']['status']
-
-                if chapa_status == 'success':
-                    payment.status = 'completed'
-                    payment.booking.status = 'confirmed'
-                    payment.booking.save()
-                else:
-                    payment.status = 'failed'
-
-                payment.save()
-
-                return Response({
-                    'reference': payment.reference,
-                    'status': payment.status,
-                    'amount': str(payment.amount)
-                }, status=status.HTTP_200_OK)
-            else:
-                return Response({'error': 'Verification failed'},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-        except requests.exceptions.RequestException as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(stats)

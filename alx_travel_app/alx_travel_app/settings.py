@@ -19,10 +19,12 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = [
-     'lordlinker.pythonanywhere.com',
-    'www.lordlinker.pythonanywhere.com',
-]
+# ALLOWED_HOSTS = [
+#      'lordlinker.pythonanywhere.com',
+#     'www.lordlinker.pythonanywhere.com',
+#     '*'
+# ]
+ALLOWED_HOSTS = ['*']
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -63,17 +65,28 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_yasg',
     'django_celery_results',
+    'rest_framework.authtoken',
+    'django_filters',
 ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.TokenAuthentication',  # Optional: for token-based auth
+        'rest_framework.authentication.TokenAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
 }
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -120,34 +133,20 @@ WSGI_APPLICATION = 'alx_travel_app.wsgi.application'
 #     }
 # }
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-<<<<<<< HEAD
-        'NAME': env('DB_NAME'),
-        'USER': env('DB_USER'),
-        'PASSWORD': env('DB_PASSWORD'),
-        'HOST': env('DB_HOST', default='localhost'),
-        # 'PORT': env('DB_PORT', default='3307'),
-    }
-}
-
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'alx_travel',
-#         'USER': 'root',
-#         'PASSWORD': 'max0546843973',
-#         'HOST': 'localhost',
-#         'PORT': '3306',  # Your custom port
-#         'OPTIONS': {
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#             'charset': 'utf8mb4',
-#         },
+#         'NAME': env('DB_NAME'),
+#         'USER': env('DB_USER'),
+#         'PASSWORD': env('DB_PASSWORD'),
+#         'HOST': env('DB_HOST', default='localhost'),
+#         # 'PORT': env('DB_PORT', default='3307'),
 #     }
 # }
 
-=======
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
         'NAME': 'alx_travel',
         'USER': 'root',
         'PASSWORD': 'max0546843973',
@@ -160,7 +159,8 @@ DATABASES = {
     }
 }
 
->>>>>>> 9f08b02f5f949862c3244362ba1bc3d4acd6d73f
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -201,3 +201,42 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# DRF YASG Configuration
+# Swagger settings
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Basic': {
+            'type': 'basic'
+        },
+        'Token': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'Enter your token in the format: Token <your_token>'
+        }
+    },
+    'USE_SESSION_AUTH': True,
+    'JSON_EDITOR': True,
+    'DEFAULT_FIELD_INSPECTORS': [
+        'drf_yasg.inspectors.CamelCaseJSONFilter',
+        'drf_yasg.inspectors.InlineSerializerInspector',
+        'drf_yasg.inspectors.RelatedFieldInspector',
+        'drf_yasg.inspectors.ChoiceFieldInspector',
+        'drf_yasg.inspectors.FileFieldInspector',
+        'drf_yasg.inspectors.DictFieldInspector',
+        'drf_yasg.inspectors.JSONFieldInspector',
+        'drf_yasg.inspectors.HiddenFieldInspector',
+        'drf_yasg.inspectors.RecursiveFieldInspector',
+        'drf_yasg.inspectors.SerializerMethodFieldInspector',
+        'drf_yasg.inspectors.SimpleFieldInspector',
+        'drf_yasg.inspectors.StringDefaultFieldInspector',
+    ],
+}
+
+REDOC_SETTINGS = {
+    'LAZY_RENDERING': False,
+    'NATIVE_SCROLLBARS': False,
+    'REQUIRED_PROPS_FIRST': True,
+}
+
